@@ -23,7 +23,8 @@ os.environ["OMP_NUM_THREADS"] = "1"
 UPDATE_GLOBAL_ITER = 10
 GAMMA = 0.95
 MAX_EP = 10000
-DIR = "/home/jinwei/Documents/Git/pytorch-A3C/Result/A3C/"
+# DIR = "/home/jinwei/Documents/Git/pytorch-A3C/Result/A3C/"
+DIR = "/Users/karl/Documents/Git/pytorch-A3C/Result/A3C"
 DIE_PENALTY = -10
 
 env = gym.make('MsPacman-v0')
@@ -50,33 +51,25 @@ class Net(nn.Module):
         self.distribution = torch.distributions.Categorical
 
     def forward(self, x):
-        print("forward")
-        print(x.shape)
-        # a_x = F.relu(self.conv1_a(x))
-        # print(a_x)
-        # a_x = F.relu(self.conv2_a(a_x))
-        # a_x = F.relu(self.conv3_a(a_x))
-        # a_x = a_x.view(a_x.size(0), -1)
-        # a_x = F.relu(self.f1_a(a_x))
-        # a_x = self.f2_a(a_x)
-        # print(a_x)
-        # v_x = F.relu(self.conv1_v(x))
-        # v_x = F.relu(self.conv2_v(v_x))
-        # v_x = F.relu(self.conv3_v(v_x))
-        # v_x = v_x.view(v_x.size(0), -1)
-        # v_x = F.relu(self.f1_v(v_x))
-        # v_x = self.f2_v(v_x)
-        # print(v_x)
-        a_x = self.f_test1(x)
-        v_x = self.f_test2(x)
+        a_x = F.relu(self.conv1_a(x))
+        a_x = F.relu(self.conv2_a(a_x))
+        a_x = F.relu(self.conv3_a(a_x))
+        a_x = a_x.view(a_x.size(0), -1)
+        a_x = F.relu(self.f1_a(a_x))
+        a_x = self.f2_a(a_x)
+        v_x = F.relu(self.conv1_v(x))
+        v_x = F.relu(self.conv2_v(v_x))
+        v_x = F.relu(self.conv3_v(v_x))
+        v_x = v_x.view(v_x.size(0), -1)
+        v_x = F.relu(self.f1_v(v_x))
+        v_x = self.f2_v(v_x)
+        # a_x = self.f_test1(x)
+        # v_x = self.f_test2(x)
         return a_x, v_x
 
     def choose_action(self, s):
-        print("enter choose action")
         self.eval()
-        print("run eval")
         logits, v = self.forward(s)
-        print("forward")
         prob = F.softmax(logits, dim=1).data
         m = self.distribution(prob)
         return m.sample().numpy()[0]
@@ -111,6 +104,7 @@ class Worker(mp.Process):
         total_step = 1
         while self.g_ep.value < MAX_EP:
             s = np.transpose(self.env.reset(),(2,0,1))/255.0
+            print("reset", s.shape)
             lives = self.lives_sum
             buffer_s, buffer_a, buffer_r = [], [], []
             ep_r = 0.
@@ -120,15 +114,13 @@ class Worker(mp.Process):
                     self.env.render()
                 print(self.name, total_step)
                 a = self.lnet.choose_action(v_wrap(s[None, :]))
-                print("action",a)
                 s_, r, done, info = self.env.step(a)
-                print("take action")
-                s_ = np.transpose(s, (2,0,1))/255.0
+                s_ = np.transpose(s_, (2,0,1))/255.0
+                print("after action,", s_.shape)
                 livesLeft = info['ale.lives']          # punish everytime the agent loses life
                 if livesLeft != lives:
                     r = DIE_PENALTY
                     lives = livesLeft
-                print("p2")
                 ep_r += r
                 buffer_a.append(a)
                 buffer_s.append(s)
@@ -142,7 +134,6 @@ class Worker(mp.Process):
                     if done:  # done and print information
                         record(self.g_ep, ep_r, self.res_queue, self.name, self.lives_sum, DIE_PENALTY)
                         break
-                print("p3")
                 s = s_
         self.res_queue.put(None)
 
