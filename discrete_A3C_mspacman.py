@@ -5,6 +5,7 @@ The most simple implementation for continuous action.
 View more on my Chinese tutorial page [莫烦Python](https://morvanzhou.github.io/).
 """
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -22,7 +23,7 @@ os.environ["OMP_NUM_THREADS"] = "1"
 UPDATE_GLOBAL_ITER = 10
 GAMMA = 0.95
 MAX_EP = 10000
-DIR = "/"
+DIR = "/home/jinwei/Documents/Git/pytorch-A3C/Result/A3C/"
 DIE_PENALTY = -10
 
 env = gym.make('MsPacman-v0')
@@ -85,19 +86,20 @@ class Net(nn.Module):
 
 
 class Worker(mp.Process):
-    def __init__(self, gnet, opt, global_ep, global_ep_r, global_steps, res_queue, name, writer):
+    def __init__(self, gnet, opt, global_ep, global_ep_r, res_queue, name):
         super(Worker, self).__init__()
         self.name = 'w%i' % name
-        self.g_ep, self.g_ep_r, self.g_steps, self.res_queue = global_ep, global_ep_r, global_steps, res_queue
+        self.g_ep, self.g_ep_r, self.res_queue = global_ep, global_ep_r, res_queue
         self.gnet, self.opt = gnet, opt
-        self.lnet = Net(N_S, N_A)           # local network
-        self.env = gym.make('CartPole-v0').unwrapped
-        s = self.env.reset()
+        self.lnet = Net(N_A)           # local network
+        self.env = gym.make('MsPacman-v0').unwrapped
+        self.env.reset()
         _, _, _, info = self.env.step(0)
         self.lives_sum = info['ale.lives']
 
     def run(self):
         while self.g_ep.value < MAX_EP:
+            s = np.transpose(self.env.reset(),(2,0,1))/255.0
             steps = 0
             lives = self.lives_sum
             buffer_s, buffer_a, buffer_r = [], [], []
@@ -108,6 +110,7 @@ class Worker(mp.Process):
                 steps += 1
                 a = self.lnet.choose_action(v_wrap(s[None, :]))
                 s_, r, done, info = self.env.step(a)
+                s_ = np.transpose(s, (2,0,1))/255.0
                 livesLeft = info['ale.lives']          # punish everytime the agent loses life
                 if livesLeft != lives:
                     r = DIE_PENALTY
@@ -131,22 +134,22 @@ class Worker(mp.Process):
 
 
 if __name__ == "__main__":
-    gnet = Net(N_S, N_A)        # global network
-    model_dir = Dir+"model/*"      # load recent trained global network
+    gnet = Net(N_A)        # global network
+    model_dir = DIR+"model/*"      # load recent trained global network
     model_files = sorted(glob.iglob(model_dir), key=os.path.getctime, reverse=True)
-    if len(model_files != 0):
+    if len(model_files) != 0:
         gnet.load_state_dict(torch.load(model_files[0]))
-    print("load global network from ", model_files[0])
+        print("load global network from ", model_files[0])
     gnet.share_memory()         # share the global parameters in multiprocessing
     opt = SharedAdam(gnet.parameters(), lr=0.0001)      # global optimizer
     global_ep, global_ep_r, res_queue = mp.Value('i', 0), mp.Value('d', 0.), mp.Queue()
 
-    start_time = datetime.datetime.now()        # to track the time
+    start_time = str(datetime.datetime.now())        # to track the time
 
     # parallel training
-    workers = [Worker(gnet, opt, global_ep, global_ep_r, global_steps, res_queue, i, writer) for i in range(mp.cpu_count())]
+    workers = [Worker(gnet, opt, global_ep, global_ep_r, res_queue, i) for i in range(mp.cpu_count())]
     [w.start() for w in workers]
-    end_time = datetime.datetime.now()           # end time
+    end_time = str(datetime.datetime.now())         # end time
     torch.save(gnet.state_dict(), DIR+"model/model_"+start_time+"-"+end_time)
     res = []                    # record episode reward to plot
     while True:
