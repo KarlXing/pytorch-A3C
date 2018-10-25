@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from utils import v_wrap, push_and_pull, record
+from utils import v_wrap, push_and_pull, record, set_init
 import torch.nn.functional as F
 import torch.multiprocessing as mp
 from shared_adam import SharedAdam
@@ -45,28 +45,38 @@ class Net(nn.Module):
         self.f1_v = nn.Linear(22*16*64, 512)
         self.f2_v = nn.Linear(512, 1)
 
+        self.f_test1 = nn.Linear(1*3*210*160,9)
+        self.f_test2 = nn.Linear(1*3*210*160,1)
         self.distribution = torch.distributions.Categorical
 
     def forward(self, x):
-        a_x = F.relu(self.conv1_a(x))
-        a_x = F.relu(self.conv2_a(a_x))
-        a_x = F.relu(self.conv3_a(a_x))
-        a_x = a_x.view(a_x.size(0), -1)
-        a_x = F.relu(self.f1_a(a_x))
-        a_x = self.f2_a(a_x)
-
-        v_x = F.relu(self.conv1_v(x))
-        v_x = F.relu(self.conv2_v(v_x))
-        v_x = F.relu(self.conv3_v(v_x))
-        v_x = v_x.view(v_x.size(0), -1)
-        v_x = F.relu(self.f1_v(v_x))
-        v_x = self.f2_v(v_x)
-
+        print("forward")
+        print(x.shape)
+        # a_x = F.relu(self.conv1_a(x))
+        # print(a_x)
+        # a_x = F.relu(self.conv2_a(a_x))
+        # a_x = F.relu(self.conv3_a(a_x))
+        # a_x = a_x.view(a_x.size(0), -1)
+        # a_x = F.relu(self.f1_a(a_x))
+        # a_x = self.f2_a(a_x)
+        # print(a_x)
+        # v_x = F.relu(self.conv1_v(x))
+        # v_x = F.relu(self.conv2_v(v_x))
+        # v_x = F.relu(self.conv3_v(v_x))
+        # v_x = v_x.view(v_x.size(0), -1)
+        # v_x = F.relu(self.f1_v(v_x))
+        # v_x = self.f2_v(v_x)
+        # print(v_x)
+        a_x = self.f_test1(x)
+        v_x = self.f_test2(x)
         return a_x, v_x
 
     def choose_action(self, s):
+        print("enter choose action")
         self.eval()
+        print("run eval")
         logits, v = self.forward(s)
+        print("forward")
         prob = F.softmax(logits, dim=1).data
         m = self.distribution(prob)
         return m.sample().numpy()[0]
@@ -98,24 +108,27 @@ class Worker(mp.Process):
         self.lives_sum = info['ale.lives']
 
     def run(self):
+        total_step = 1
         while self.g_ep.value < MAX_EP:
             s = np.transpose(self.env.reset(),(2,0,1))/255.0
-            steps = 0
             lives = self.lives_sum
             buffer_s, buffer_a, buffer_r = [], [], []
             ep_r = 0.
             while True:
-                # if self.name == 'w0':
-                #     self.env.render()
-                steps += 1
+                total_step += 1
+                if self.name == 'w0':
+                    self.env.render()
+                print(self.name, total_step)
                 a = self.lnet.choose_action(v_wrap(s[None, :]))
+                print("action",a)
                 s_, r, done, info = self.env.step(a)
+                print("take action")
                 s_ = np.transpose(s, (2,0,1))/255.0
                 livesLeft = info['ale.lives']          # punish everytime the agent loses life
                 if livesLeft != lives:
                     r = DIE_PENALTY
                     lives = livesLeft
-
+                print("p2")
                 ep_r += r
                 buffer_a.append(a)
                 buffer_s.append(s)
@@ -129,6 +142,7 @@ class Worker(mp.Process):
                     if done:  # done and print information
                         record(self.g_ep, ep_r, self.res_queue, self.name, self.lives_sum, DIE_PENALTY)
                         break
+                print("p3")
                 s = s_
         self.res_queue.put(None)
 
@@ -149,8 +163,6 @@ if __name__ == "__main__":
     # parallel training
     workers = [Worker(gnet, opt, global_ep, global_ep_r, res_queue, i) for i in range(mp.cpu_count())]
     [w.start() for w in workers]
-    end_time = str(datetime.datetime.now())         # end time
-    torch.save(gnet.state_dict(), DIR+"model/model_"+start_time+"-"+end_time)
     res = []                    # record episode reward to plot
     while True:
         r = res_queue.get()
@@ -158,6 +170,8 @@ if __name__ == "__main__":
             res.append(r)
         else:
             break
+    end_time = str(datetime.datetime.now())         # end time
+    torch.save(gnet.state_dict(), DIR+"model/model_"+start_time+"-"+end_time)
     with open(DIR+"record/record_"+start_time+"-"+end_time,"wb") as f:
         pickle.dump(res, f)
     [w.join() for w in workers]
