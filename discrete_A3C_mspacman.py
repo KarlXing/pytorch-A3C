@@ -150,9 +150,11 @@ if __name__ == "__main__":
     global_ep, global_ep_r, res_queue = mp.Value('i', 0), mp.Value('d', 0.), mp.Queue()
 
     start_time = str(datetime.datetime.now())        # to track the time
-
+    print("start to build workers")
+    print("num of processes: ", mp.cpu_count())
     # parallel training
     workers = [Worker(gnet, opt, global_ep, global_ep_r, res_queue, i) for i in range(mp.cpu_count())]
+    print("start to work")
     [w.start() for w in workers]
     res = []                    # record episode reward to plot
     while True:
