@@ -26,6 +26,7 @@ MAX_EP = 10000
 DIR = "/home/jinwei/Documents/Git/pytorch-A3C/Result/A3C/"
 # DIR = "/Users/karl/Documents/Git/pytorch-A3C/Result/A3C"
 DIE_PENALTY = -20
+MAX_WORKERS = 16
 
 env = gym.make('MsPacman-v0')
 N_A = env.action_space.n
@@ -49,7 +50,7 @@ class Net(nn.Module):
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
         x = x.view(x.size(0), -1)
-        a_x = F.relu(self.f1_a(x))
+        a_x = F.tanh(self.f1_a(x))
         a_x = self.f2_a(a_x)
         v_x = F.relu(self.f1_v(x))
         v_x = self.f2_v(v_x)
@@ -70,7 +71,6 @@ class Net(nn.Module):
         c_loss = td.pow(2).mean()
         
         probs = F.softmax(logits, dim=1)
-        print(logits)
         m = self.distribution(probs)
         dist_entropy = m.entropy().mean()
         a_loss = -(m.log_prob(a) * td.detach().squeeze()).mean()
@@ -118,8 +118,8 @@ class Worker(mp.Process):
 
                 if total_step % UPDATE_GLOBAL_ITER == 0 or done:  # update global and assign to local net
                     # sync
-                    if self.name == 'w0':
-                        self.env.render()
+                    # if self.name == 'w0':
+                    #     self.env.render()
                     push_and_pull(self.opt, self.lnet, self.gnet, done, s_, buffer_s, buffer_a, buffer_r, GAMMA)
                     buffer_s, buffer_a, buffer_r = [], [], []
 
@@ -145,9 +145,10 @@ if __name__ == "__main__":
     start_time = str(datetime.datetime.now())        # to track the time
 
     # parallel training
-    workers = [Worker(gnet, opt, global_ep, global_ep_r, res_queue, i) for i in range(8)]
+    num_workers = min(MAX_WORKERS, mp.cpu_count())
+    workers = [Worker(gnet, opt, global_ep, global_ep_r, res_queue, i) for i in range(num_workers)]
     [w.start() for w in workers]
-    [w.join() for w in workers]
+    
     res = []                    # record episode reward to plot
     while True:
         r = res_queue.get()
@@ -159,5 +160,5 @@ if __name__ == "__main__":
     torch.save(gnet.state_dict(), DIR+"model/model_"+start_time+"-"+end_time)
     with open(DIR+"record/record_"+start_time+"-"+end_time,"wb") as f:
         pickle.dump(res, f)
-
+    [w.join() for w in workers]
     print("complete")
