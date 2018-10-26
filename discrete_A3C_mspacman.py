@@ -23,8 +23,8 @@ os.environ["OMP_NUM_THREADS"] = "1"
 UPDATE_GLOBAL_ITER = 10
 GAMMA = 0.95
 MAX_EP = 10000
-# DIR = "/home/jinwei/Documents/Git/pytorch-A3C/Result/A3C/"
-DIR = "/Users/karl/Documents/Git/pytorch-A3C/Result/A3C"
+MAX_WORKERS = 16
+DIR = ""
 DIE_PENALTY = -10
 
 env = gym.make('MsPacman-v0')
@@ -46,8 +46,6 @@ class Net(nn.Module):
         self.f1_v = nn.Linear(22*16*64, 512)
         self.f2_v = nn.Linear(512, 1)
 
-        self.f_test1 = nn.Linear(1*3*210*160,9)
-        self.f_test2 = nn.Linear(1*3*210*160,1)
         self.distribution = torch.distributions.Categorical
 
     def forward(self, x):
@@ -63,8 +61,6 @@ class Net(nn.Module):
         v_x = v_x.view(v_x.size(0), -1)
         v_x = F.relu(self.f1_v(v_x))
         v_x = self.f2_v(v_x)
-        # a_x = self.f_test1(x)
-        # v_x = self.f_test2(x)
         return a_x, v_x
 
     def choose_action(self, s):
@@ -112,11 +108,9 @@ class Worker(mp.Process):
                 total_step += 1
                 if self.name == 'w0':
                     self.env.render()
-                print(self.name, total_step)
                 a = self.lnet.choose_action(v_wrap(s[None, :]))
                 s_, r, done, info = self.env.step(a)
                 s_ = np.transpose(s_, (2,0,1))/255.0
-                print("after action,", s_.shape)
                 livesLeft = info['ale.lives']          # punish everytime the agent loses life
                 if livesLeft != lives:
                     r = DIE_PENALTY
@@ -139,6 +133,7 @@ class Worker(mp.Process):
 
 
 if __name__ == "__main__":
+    mp.set_start_method("spawn")
     gnet = Net(N_A)        # global network
     model_dir = DIR+"model/*"      # load recent trained global network
     model_files = sorted(glob.iglob(model_dir), key=os.path.getctime, reverse=True)
@@ -151,11 +146,13 @@ if __name__ == "__main__":
 
     start_time = str(datetime.datetime.now())        # to track the time
     print("start to build workers")
-    print("num of processes: ", mp.cpu_count())
     # parallel training
-    workers = [Worker(gnet, opt, global_ep, global_ep_r, res_queue, i) for i in range(mp.cpu_count())]
+    num_workers = min(mp.cpu_count(), MAX_WORKERS)
+    print("num of workers: ", num_workers)
+    workers = [Worker(gnet, opt, global_ep, global_ep_r, res_queue, i) for i in range(num_workers)]
     print("start to work")
     [w.start() for w in workers]
+    end_time = str(datetime.datetime.now())         # end time
     res = []                    # record episode reward to plot
     while True:
         r = res_queue.get()
@@ -163,7 +160,6 @@ if __name__ == "__main__":
             res.append(r)
         else:
             break
-    end_time = str(datetime.datetime.now())         # end time
     torch.save(gnet.state_dict(), DIR+"model/model_"+start_time+"-"+end_time)
     with open(DIR+"record/record_"+start_time+"-"+end_time,"wb") as f:
         pickle.dump(res, f)
