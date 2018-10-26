@@ -53,8 +53,8 @@ def record(global_ep, ep_r, res_queue, name, lives, penalty):
     res_queue.put(ep_r-lives*penalty)
     print(
         name,
-        "Ep:", global_ep.value,
-        "| Ep_r: %.0f" % ep_r-lives*penalty
+        "Ep: ", global_ep.value,
+        "| Ep_r: ", ep_r-lives*penalty
     )
 
 def push_and_pull2(opt, lnet, gnet, done, s_, bs, ba, br, bb, gamma, v_next):

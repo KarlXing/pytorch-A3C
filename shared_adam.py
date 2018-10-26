@@ -3,6 +3,8 @@ Shared optimizer, the parameters in the optimizer will shared in the multiproces
 """
 
 import torch
+import math
+from torch.optim.optimizer import Optimizer
 
 
 class SharedAdam(torch.optim.Adam):
@@ -20,4 +22,3 @@ class SharedAdam(torch.optim.Adam):
                 # share in memory
                 state['exp_avg'].share_memory_()
                 state['exp_avg_sq'].share_memory_()
-
